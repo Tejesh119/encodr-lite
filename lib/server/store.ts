@@ -20,40 +20,61 @@ export interface RunRecord {
 /** The one "magic" source URL that always fails partway, so you can build the error path. */
 export const FAIL_URL = "https://cdn.example.com/videos/corrupt.mp4";
 
-// ---------------------------------------------------------------------------
-// TASK 3 — the run state machine. This is the most interesting logic in the exercise.
-// ---------------------------------------------------------------------------
-
-/**
- * TODO(candidate): work out what state a run is in right now.
- *
- * There are no timers on the server. Instead, a run's state is a PURE FUNCTION of how much time
- * has passed since it started: `elapsed = now - record.startedAt`. Same inputs, same output, every
- * time — which is exactly why it's easy to unit-test (you pass in `now`, so no waiting around).
- *
- * Use the constants in TIMELINE (lib/types.ts) so your numbers match ours:
- *
- *   elapsed < 2000ms                  → stage "QUEUED"
- *   2000ms  ≤ elapsed < 6000ms        → stage "DOWNLOADING"
- *   6000ms  ≤ elapsed < 12000ms       → stage "TRANSCODING"
- *   elapsed ≥ 12000ms                 → stage "COMPLETED", and `result` is set (use makeResult())
- *
- *   EXCEPT: if record.sourceUrl === FAIL_URL and elapsed ≥ 8000ms, the run is "FAILED" with an
- *   `error` message explaining what went wrong. (Before 8000ms it behaves normally.)
- *
- * progressPct should be 0 at elapsed 0 and 100 once COMPLETED, and must never go backwards.
- * The simplest thing that works: scale elapsed across the whole 12s timeline. You do not need
- * per-stage percentages. For a FAILED run, freeze the percentage where it got to.
- *
- * `message` is one human-readable line for the UI's log, e.g. "Transcoding 1080p…".
- *
- * Return an EncodeRun (see lib/types.ts) — `error` only on FAILED, `result` only on COMPLETED.
- *
- * Suggested order of work: write the tests in __tests__/ first (one per stage boundary, one for
- * the failing URL), watch them fail, then make them pass.
- */
 export function computeRun(record: RunRecord, now: number = Date.now()): EncodeRun {
-  throw new Error("Not implemented: computeRun (see TODO above)");
+  const elapsed = Math.max(0, now - record.startedAt);
+
+  if (record.sourceUrl === FAIL_URL && elapsed >= TIMELINE.failAtMs) {
+    const frozenProgress = Math.round((TIMELINE.failAtMs / TIMELINE.transcodingEndsMs) * 100);
+    return {
+      id: record.id,
+      jobId: record.jobId,
+      stage: "FAILED",
+      progressPct: frozenProgress,
+      message: "Transcoding failed: source media is corrupt",
+      error: "Corrupt video stream: unexpected EOF encountered during transcode",
+    };
+  }
+
+  const progressPct = Math.min(100, Math.round((elapsed / TIMELINE.transcodingEndsMs) * 100));
+
+  if (elapsed < TIMELINE.queuedEndsMs) {
+    return {
+      id: record.id,
+      jobId: record.jobId,
+      stage: "QUEUED",
+      progressPct,
+      message: "Job queued for encoding",
+    };
+  }
+
+  if (elapsed < TIMELINE.downloadingEndsMs) {
+    return {
+      id: record.id,
+      jobId: record.jobId,
+      stage: "DOWNLOADING",
+      progressPct,
+      message: "Downloading source media",
+    };
+  }
+
+  if (elapsed < TIMELINE.transcodingEndsMs) {
+    return {
+      id: record.id,
+      jobId: record.jobId,
+      stage: "TRANSCODING",
+      progressPct,
+      message: "Transcoding renditions (1080p, 720p, 480p)",
+    };
+  }
+
+  return {
+    id: record.id,
+    jobId: record.jobId,
+    stage: "COMPLETED",
+    progressPct: 100,
+    message: "Encoding completed successfully",
+    result: makeResult(),
+  };
 }
 
 // ---------------------------------------------------------------------------
