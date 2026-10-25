@@ -61,13 +61,8 @@ export function useCreateJob() {
   });
 }
 
-
-/**
- * TASK 5 — TODO(candidate): fetch a single run's current state.
- *
- * GET /api/runs/:id returns an EncodeRun. Your polling hook (use-run-polling.ts) needs a way to
- * ask for it. Either a small `fetchRun(runId)` function using `api.get`, or a useQuery hook with
- * a `refetchInterval` — both are legitimate; pick one and say why in the README.
- */
+export function fetchRun(runId: string, signal?: AbortSignal): Promise<EncodeRun> {
+  return api.get<EncodeRun>(`/api/runs/${runId}`, signal);
+}
 
 export type { EncodeRun, Job, CreateJobInput };
